@@ -103,5 +103,20 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Add this root route
+app.get('/', (req, res) => {
+    res.json({ 
+        message: '🚀 GATE Planner API is running!',
+        endpoints: {
+            health: '/api/health',
+            planner: '/api/planner/:userId',
+            update: 'POST /api/planner'
+        }
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
