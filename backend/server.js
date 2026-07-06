@@ -457,6 +457,35 @@ app.post('/api/syllabus/modules/add', async (req, res) => {
     }
 });
 
+// POST - Add topic to a custom module
+app.post('/api/syllabus/modules/:moduleTitle/topic', async (req, res) => {
+    try {
+        const { moduleTitle } = req.params;
+        const { topic } = req.body;
+        
+        if (!topic) {
+            return res.status(400).json({ error: 'topic is required' });
+        }
+        
+        const module = await SyllabusModule.findOne({ moduleTitle });
+        if (!module) {
+            return res.status(404).json({ error: 'Module not found' });
+        }
+        
+        // Check if topic already exists
+        if (module.topics.includes(topic)) {
+            return res.status(400).json({ error: 'Topic already exists in this module' });
+        }
+        
+        module.topics.push(topic);
+        await module.save();
+        return res.json({ ok: true, module });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
 // DELETE - Remove a custom module
 app.delete('/api/syllabus/modules/:moduleTitle', async (req, res) => {
     try {
