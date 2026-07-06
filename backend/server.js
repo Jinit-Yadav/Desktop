@@ -27,7 +27,7 @@ db.once('open', () => console.log('✅ Connected to MongoDB Atlas!'));
 
 // 1. Planner Schema
 const plannerSchema = new mongoose.Schema({
-    userId: { type: String, default: 'default_user' },
+    userId: { type: String, default: 'default_user', index: true },
     ticks: { type: Object, required: true },
     history: { type: Object, default: {} },
     snapshots: { type: Array, default: [] },
@@ -36,6 +36,7 @@ const plannerSchema = new mongoose.Schema({
 
 // 2. Mistake Schema
 const mistakeSchema = new mongoose.Schema({
+    userId: { type: String, default: 'default_user', index: true },
     question: { type: String, required: true },
     options: { type: [String], required: true },
     correct: { type: String, required: true },
@@ -51,29 +52,60 @@ const mistakeSchema = new mongoose.Schema({
     revisionCount: { type: Number, default: 0 }
 });
 
-// 3. Tracker Schema
+// 3. Tracker Schema - ADDED userId
 const trackerSchema = new mongoose.Schema({
+    userId: { type: String, default: 'default_user', index: true },
     progress: { type: Object, default: {} },
     today: { type: Object, default: {} },
     streak: { type: Object, default: { lastDate: null, streak: 0 } },
     lastUpdated: { type: Date, default: Date.now }
 });
 
+// 4. Syllabus Schemas - ADDED userId
+const syllabusTopicSchema = new mongoose.Schema({
+    userId: { type: String, default: 'default_user', index: true },
+    moduleTitle: { type: String, required: true },
+    topicTitle: { type: String, required: true },
+    checked: { type: Boolean, default: false },
+    isDA: { type: Boolean, default: false },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+const syllabusAddedTopicSchema = new mongoose.Schema({
+    userId: { type: String, default: 'default_user', index: true },
+    moduleTitle: { type: String, required: true },
+    title: { type: String, required: true },
+    isDA: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const syllabusModuleSchema = new mongoose.Schema({
+    userId: { type: String, default: 'default_user', index: true },
+    moduleTitle: { type: String, required: true },
+    topics: { type: [String], default: [] },
+    isDA: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now }
+});
+
 const Planner = mongoose.model('Planner', plannerSchema);
 const Mistake = mongoose.model('Mistake', mistakeSchema);
 const Tracker = mongoose.model('Tracker', trackerSchema);
+const SyllabusTopic = mongoose.model('SyllabusTopic', syllabusTopicSchema);
+const SyllabusAddedTopic = mongoose.model('SyllabusAddedTopic', syllabusAddedTopicSchema);
+const SyllabusModule = mongoose.model('SyllabusModule', syllabusModuleSchema);
 
 // ============================================================
-// ROUTES - PLANNER
+// ROUTES - PLANNER (Already uses userId correctly)
 // ============================================================
 
 // GET planner data
-app.get('/api/planner', async (req, res) => {
+app.get('/api/planner/:userId?', async (req, res) => {
     try {
-        let data = await Planner.findOne({ userId: 'default_user' });
+        const userId = req.params.userId || 'default_user';
+        let data = await Planner.findOne({ userId });
         if (!data) {
             data = new Planner({ 
-                userId: 'default_user',
+                userId,
                 ticks: {},
                 history: {},
                 snapshots: []
@@ -88,11 +120,12 @@ app.get('/api/planner', async (req, res) => {
 });
 
 // POST/UPDATE planner data
-app.post('/api/planner', async (req, res) => {
+app.post('/api/planner/:userId?', async (req, res) => {
     try {
+        const userId = req.params.userId || 'default_user';
         const { ticks, history, snapshots } = req.body;
         const updated = await Planner.findOneAndUpdate(
-            { userId: 'default_user' },
+            { userId },
             { 
                 ticks: ticks || {},
                 history: history || {},
@@ -109,10 +142,11 @@ app.post('/api/planner', async (req, res) => {
 });
 
 // DELETE - Reset all ticks
-app.delete('/api/planner', async (req, res) => {
+app.delete('/api/planner/:userId?', async (req, res) => {
     try {
+        const userId = req.params.userId || 'default_user';
         const updated = await Planner.findOneAndUpdate(
-            { userId: 'default_user' },
+            { userId },
             { 
                 ticks: {},
                 history: {},
@@ -129,13 +163,14 @@ app.delete('/api/planner', async (req, res) => {
 });
 
 // ============================================================
-// ROUTES - MISTAKES
+// ROUTES - MISTAKES (Added userId support)
 // ============================================================
 
-// GET all mistakes
-app.get('/api/mistakes', async (req, res) => {
+// GET all mistakes for a user
+app.get('/api/mistakes/:userId?', async (req, res) => {
     try {
-        const mistakes = await Mistake.find().sort({ createdAt: -1 });
+        const userId = req.params.userId || 'default_user';
+        const mistakes = await Mistake.find({ userId }).sort({ createdAt: -1 });
         res.json(mistakes);
     } catch (error) {
         console.error('GET Mistakes Error:', error);
@@ -160,7 +195,11 @@ app.get('/api/mistakes/:id', async (req, res) => {
 // ADD a new mistake
 app.post('/api/mistakes', async (req, res) => {
     try {
-        const mistake = new Mistake(req.body);
+        const mistakeData = req.body;
+        if (!mistakeData.userId) {
+            mistakeData.userId = 'default_user';
+        }
+        const mistake = new Mistake(mistakeData);
         await mistake.save();
         res.status(201).json(mistake);
     } catch (error) {
@@ -224,9 +263,10 @@ app.patch('/api/mistakes/:id/revision', async (req, res) => {
 });
 
 // GET analytics for mistakes
-app.get('/api/mistakes/analytics', async (req, res) => {
+app.get('/api/mistakes/analytics/:userId?', async (req, res) => {
     try {
-        const mistakes = await Mistake.find();
+        const userId = req.params.userId || 'default_user';
+        const mistakes = await Mistake.find({ userId });
         
         const analytics = {
             total: mistakes.length,
@@ -251,15 +291,17 @@ app.get('/api/mistakes/analytics', async (req, res) => {
 });
 
 // ============================================================
-// ROUTES - TRACKER ⭐ THIS IS WHAT WAS MISSING
+// ROUTES - TRACKER (FIXED - NOW USES userId)
 // ============================================================
 
 // GET tracker data
-app.get('/api/tracker', async (req, res) => {
+app.get('/api/tracker/:userId?', async (req, res) => {
     try {
-        let data = await Tracker.findOne();
+        const userId = req.params.userId || 'default_user';
+        let data = await Tracker.findOne({ userId });
         if (!data) {
             data = new Tracker({
+                userId,
                 progress: {},
                 today: {},
                 streak: { lastDate: null, streak: 0 }
@@ -274,13 +316,15 @@ app.get('/api/tracker', async (req, res) => {
 });
 
 // POST/UPDATE tracker data
-app.post('/api/tracker', async (req, res) => {
+app.post('/api/tracker/:userId?', async (req, res) => {
     try {
+        const userId = req.params.userId || 'default_user';
         const { progress, today, streak } = req.body;
         
-        let tracker = await Tracker.findOne();
+        let tracker = await Tracker.findOne({ userId });
         if (!tracker) {
             tracker = new Tracker({ 
+                userId,
                 progress: progress || {},
                 today: today || {},
                 streak: streak || { lastDate: null, streak: 0 }
@@ -301,11 +345,13 @@ app.post('/api/tracker', async (req, res) => {
 });
 
 // DELETE - Reset all tracker progress
-app.delete('/api/tracker', async (req, res) => {
+app.delete('/api/tracker/:userId?', async (req, res) => {
     try {
-        let tracker = await Tracker.findOne();
+        const userId = req.params.userId || 'default_user';
+        let tracker = await Tracker.findOne({ userId });
         if (!tracker) {
             tracker = new Tracker({
+                userId,
                 progress: {},
                 today: {},
                 streak: { lastDate: null, streak: 0 }
@@ -325,32 +371,15 @@ app.delete('/api/tracker', async (req, res) => {
 });
 
 // ============================================================
-// ROUTES - SYLLABUS
+// ROUTES - SYLLABUS (FIXED - NOW USES userId)
 // ============================================================
-
-// Syllabus Topic State Schema
-const syllabusTopicSchema = new mongoose.Schema({
-    moduleTitle: { type: String, required: true },
-    topicTitle: { type: String, required: true },
-    checked: { type: Boolean, default: false },
-    updatedAt: { type: Date, default: Date.now }
-});
-
-// Syllabus Added Topics Schema
-const syllabusAddedTopicSchema = new mongoose.Schema({
-    moduleTitle: { type: String, required: true },
-    title: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now }
-});
-
-const SyllabusTopic = mongoose.model('SyllabusTopic', syllabusTopicSchema);
-const SyllabusAddedTopic = mongoose.model('SyllabusAddedTopic', syllabusAddedTopicSchema);
 
 // GET all syllabus state
 app.get('/api/syllabus/state', async (req, res) => {
     try {
-        const topicStates = await SyllabusTopic.find({});
-        const addedTopics = await SyllabusAddedTopic.find({});
+        const userId = req.query.userId || 'default_user';
+        const topicStates = await SyllabusTopic.find({ userId });
+        const addedTopics = await SyllabusAddedTopic.find({ userId });
         return res.json({ topicStates, addedTopics });
     } catch (err) {
         console.error(err);
@@ -361,14 +390,15 @@ app.get('/api/syllabus/state', async (req, res) => {
 // POST - Save topic checkbox state
 app.post('/api/syllabus/topic/check', async (req, res) => {
     try {
-        const { moduleTitle, topicTitle, checked } = req.body;
+        const { moduleTitle, topicTitle, checked, userId, isDA } = req.body;
+        const uid = userId || 'default_user';
         if (!moduleTitle || !topicTitle) {
             return res.status(400).json({ error: 'moduleTitle and topicTitle required' });
         }
         
         await SyllabusTopic.findOneAndUpdate(
-            { moduleTitle, topicTitle },
-            { checked: !!checked, updatedAt: new Date() },
+            { userId: uid, moduleTitle, topicTitle },
+            { checked: !!checked, isDA: !!isDA, updatedAt: new Date() },
             { upsert: true }
         );
         return res.json({ ok: true });
@@ -381,12 +411,18 @@ app.post('/api/syllabus/topic/check', async (req, res) => {
 // POST - Add new topic
 app.post('/api/syllabus/module/add-topic', async (req, res) => {
     try {
-        const { moduleTitle, title } = req.body;
+        const { moduleTitle, title, userId, isDA } = req.body;
+        const uid = userId || 'default_user';
         if (!moduleTitle || !title) {
             return res.status(400).json({ error: 'moduleTitle and title required' });
         }
         
-        const newTopic = new SyllabusAddedTopic({ moduleTitle, title });
+        const newTopic = new SyllabusAddedTopic({ 
+            userId: uid, 
+            moduleTitle, 
+            title,
+            isDA: !!isDA 
+        });
         await newTopic.save();
         return res.json({ ok: true });
     } catch (err) {
@@ -395,35 +431,11 @@ app.post('/api/syllabus/module/add-topic', async (req, res) => {
     }
 });
 
-// DELETE - Reset all syllabus topics
-app.delete('/api/syllabus/reset', async (req, res) => {
-    try {
-        await SyllabusTopic.deleteMany({});
-        await SyllabusAddedTopic.deleteMany({});
-        return res.json({ ok: true, message: 'All syllabus data reset' });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ error: err.message });
-    }
-});
-
-// ============================================================
-// ROUTES - SYLLABUS CUSTOM MODULES
-// ============================================================
-
-// Custom Module Schema
-const syllabusModuleSchema = new mongoose.Schema({
-    moduleTitle: { type: String, required: true, unique: true },
-    topics: { type: [String], default: [] },
-    createdAt: { type: Date, default: Date.now }
-});
-
-const SyllabusModule = mongoose.model('SyllabusModule', syllabusModuleSchema);
-
-// GET all custom modules
+// GET custom modules
 app.get('/api/syllabus/modules', async (req, res) => {
     try {
-        const modules = await SyllabusModule.find({});
+        const userId = req.query.userId || 'default_user';
+        const modules = await SyllabusModule.find({ userId });
         return res.json(modules);
     } catch (err) {
         console.error(err);
@@ -434,20 +446,23 @@ app.get('/api/syllabus/modules', async (req, res) => {
 // POST - Add a new custom module
 app.post('/api/syllabus/modules/add', async (req, res) => {
     try {
-        const { moduleTitle, topics } = req.body;
+        const { moduleTitle, topics, userId, isDA } = req.body;
+        const uid = userId || 'default_user';
         if (!moduleTitle) {
             return res.status(400).json({ error: 'moduleTitle is required' });
         }
         
-        // Check if module already exists
-        const existing = await SyllabusModule.findOne({ moduleTitle });
+        // Check if module already exists for this user
+        const existing = await SyllabusModule.findOne({ userId: uid, moduleTitle });
         if (existing) {
             return res.status(400).json({ error: 'Module already exists' });
         }
         
         const newModule = new SyllabusModule({
+            userId: uid,
             moduleTitle,
-            topics: topics || []
+            topics: topics || [],
+            isDA: !!isDA
         });
         await newModule.save();
         return res.json({ ok: true, module: newModule });
@@ -461,18 +476,18 @@ app.post('/api/syllabus/modules/add', async (req, res) => {
 app.post('/api/syllabus/modules/:moduleTitle/topic', async (req, res) => {
     try {
         const { moduleTitle } = req.params;
-        const { topic } = req.body;
+        const { topic, userId } = req.body;
+        const uid = userId || 'default_user';
         
         if (!topic) {
             return res.status(400).json({ error: 'topic is required' });
         }
         
-        const module = await SyllabusModule.findOne({ moduleTitle });
+        const module = await SyllabusModule.findOne({ userId: uid, moduleTitle });
         if (!module) {
             return res.status(404).json({ error: 'Module not found' });
         }
         
-        // Check if topic already exists
         if (module.topics.includes(topic)) {
             return res.status(400).json({ error: 'Topic already exists in this module' });
         }
@@ -490,11 +505,26 @@ app.post('/api/syllabus/modules/:moduleTitle/topic', async (req, res) => {
 app.delete('/api/syllabus/modules/:moduleTitle', async (req, res) => {
     try {
         const { moduleTitle } = req.params;
-        const result = await SyllabusModule.findOneAndDelete({ moduleTitle });
+        const userId = req.query.userId || 'default_user';
+        const result = await SyllabusModule.findOneAndDelete({ userId, moduleTitle });
         if (!result) {
             return res.status(404).json({ error: 'Module not found' });
         }
         return res.json({ ok: true, message: 'Module deleted' });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE - Reset all syllabus topics
+app.delete('/api/syllabus/reset', async (req, res) => {
+    try {
+        const userId = req.query.userId || 'default_user';
+        await SyllabusTopic.deleteMany({ userId });
+        await SyllabusAddedTopic.deleteMany({ userId });
+        await SyllabusModule.deleteMany({ userId });
+        return res.json({ ok: true, message: 'All syllabus data reset' });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: err.message });
@@ -508,7 +538,7 @@ app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        routes: ['/api/planner', '/api/tracker', '/api/mistakes']
+        routes: ['/api/planner/:userId?', '/api/tracker/:userId?', '/api/mistakes/:userId?', '/api/syllabus']
     });
 });
 
@@ -519,23 +549,32 @@ app.get('/', (req, res) => {
         endpoints: {
             health: '/api/health',
             planner: {
-                get: '/api/planner',
-                post: '/api/planner',
-                delete: '/api/planner'
+                get: '/api/planner/:userId?',
+                post: '/api/planner/:userId?',
+                delete: '/api/planner/:userId?'
             },
             mistakes: {
-                get: '/api/mistakes',
+                get: '/api/mistakes/:userId?',
                 post: '/api/mistakes',
                 getOne: '/api/mistakes/:id',
                 put: '/api/mistakes/:id',
                 delete: '/api/mistakes/:id',
                 revision: '/api/mistakes/:id/revision',
-                analytics: '/api/mistakes/analytics'
+                analytics: '/api/mistakes/analytics/:userId?'
             },
             tracker: {
-                get: '/api/tracker',
-                post: '/api/tracker',
-                delete: '/api/tracker'
+                get: '/api/tracker/:userId?',
+                post: '/api/tracker/:userId?',
+                delete: '/api/tracker/:userId?'
+            },
+            syllabus: {
+                state: '/api/syllabus/state?userId=...',
+                topicCheck: '/api/syllabus/topic/check',
+                addTopic: '/api/syllabus/module/add-topic',
+                modules: '/api/syllabus/modules?userId=...',
+                addModule: '/api/syllabus/modules/add',
+                deleteModule: '/api/syllabus/modules/:moduleTitle?userId=...',
+                reset: '/api/syllabus/reset?userId=...'
             }
         }
     });
@@ -548,7 +587,7 @@ app.use((req, res) => {
     res.status(404).json({ 
         error: 'Route not found',
         message: `Cannot ${req.method} ${req.url}`,
-        availableRoutes: ['/api/planner', '/api/tracker', '/api/mistakes', '/api/health']
+        availableRoutes: ['/api/planner/:userId?', '/api/tracker/:userId?', '/api/mistakes/:userId?', '/api/syllabus/state', '/api/health']
     });
 });
 
@@ -556,7 +595,8 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📍 Health check: http://localhost:${PORT}/api/health`);
-    console.log(`📍 Planner: http://localhost:${PORT}/api/planner`);
-    console.log(`📍 Tracker: http://localhost:${PORT}/api/tracker`);
-    console.log(`📍 Mistakes: http://localhost:${PORT}/api/mistakes`);
+    console.log(`📍 Planner: http://localhost:${PORT}/api/planner/{userId}`);
+    console.log(`📍 Tracker: http://localhost:${PORT}/api/tracker/{userId}`);
+    console.log(`📍 Mistakes: http://localhost:${PORT}/api/mistakes/{userId}`);
+    console.log(`📍 Syllabus: http://localhost:${PORT}/api/syllabus/state?userId={userId}`);
 });
