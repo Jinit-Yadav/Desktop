@@ -408,6 +408,71 @@ app.delete('/api/syllabus/reset', async (req, res) => {
 });
 
 // ============================================================
+// ROUTES - SYLLABUS CUSTOM MODULES
+// ============================================================
+
+// Custom Module Schema
+const syllabusModuleSchema = new mongoose.Schema({
+    moduleTitle: { type: String, required: true, unique: true },
+    topics: { type: [String], default: [] },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const SyllabusModule = mongoose.model('SyllabusModule', syllabusModuleSchema);
+
+// GET all custom modules
+app.get('/api/syllabus/modules', async (req, res) => {
+    try {
+        const modules = await SyllabusModule.find({});
+        return res.json(modules);
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// POST - Add a new custom module
+app.post('/api/syllabus/modules/add', async (req, res) => {
+    try {
+        const { moduleTitle, topics } = req.body;
+        if (!moduleTitle) {
+            return res.status(400).json({ error: 'moduleTitle is required' });
+        }
+        
+        // Check if module already exists
+        const existing = await SyllabusModule.findOne({ moduleTitle });
+        if (existing) {
+            return res.status(400).json({ error: 'Module already exists' });
+        }
+        
+        const newModule = new SyllabusModule({
+            moduleTitle,
+            topics: topics || []
+        });
+        await newModule.save();
+        return res.json({ ok: true, module: newModule });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE - Remove a custom module
+app.delete('/api/syllabus/modules/:moduleTitle', async (req, res) => {
+    try {
+        const { moduleTitle } = req.params;
+        const result = await SyllabusModule.findOneAndDelete({ moduleTitle });
+        if (!result) {
+            return res.status(404).json({ error: 'Module not found' });
+        }
+        return res.json({ ok: true, message: 'Module deleted' });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================================
 // HEALTH CHECK
 // ============================================================
 app.get('/api/health', (req, res) => {
