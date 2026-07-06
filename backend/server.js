@@ -325,6 +325,89 @@ app.delete('/api/tracker', async (req, res) => {
 });
 
 // ============================================================
+// ROUTES - SYLLABUS
+// ============================================================
+
+// Syllabus Topic State Schema
+const syllabusTopicSchema = new mongoose.Schema({
+    moduleTitle: { type: String, required: true },
+    topicTitle: { type: String, required: true },
+    checked: { type: Boolean, default: false },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+// Syllabus Added Topics Schema
+const syllabusAddedTopicSchema = new mongoose.Schema({
+    moduleTitle: { type: String, required: true },
+    title: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const SyllabusTopic = mongoose.model('SyllabusTopic', syllabusTopicSchema);
+const SyllabusAddedTopic = mongoose.model('SyllabusAddedTopic', syllabusAddedTopicSchema);
+
+// GET all syllabus state
+app.get('/api/syllabus/state', async (req, res) => {
+    try {
+        const topicStates = await SyllabusTopic.find({});
+        const addedTopics = await SyllabusAddedTopic.find({});
+        return res.json({ topicStates, addedTopics });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// POST - Save topic checkbox state
+app.post('/api/syllabus/topic/check', async (req, res) => {
+    try {
+        const { moduleTitle, topicTitle, checked } = req.body;
+        if (!moduleTitle || !topicTitle) {
+            return res.status(400).json({ error: 'moduleTitle and topicTitle required' });
+        }
+        
+        await SyllabusTopic.findOneAndUpdate(
+            { moduleTitle, topicTitle },
+            { checked: !!checked, updatedAt: new Date() },
+            { upsert: true }
+        );
+        return res.json({ ok: true });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// POST - Add new topic
+app.post('/api/syllabus/module/add-topic', async (req, res) => {
+    try {
+        const { moduleTitle, title } = req.body;
+        if (!moduleTitle || !title) {
+            return res.status(400).json({ error: 'moduleTitle and title required' });
+        }
+        
+        const newTopic = new SyllabusAddedTopic({ moduleTitle, title });
+        await newTopic.save();
+        return res.json({ ok: true });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE - Reset all syllabus topics
+app.delete('/api/syllabus/reset', async (req, res) => {
+    try {
+        await SyllabusTopic.deleteMany({});
+        await SyllabusAddedTopic.deleteMany({});
+        return res.json({ ok: true, message: 'All syllabus data reset' });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================================
 // HEALTH CHECK
 // ============================================================
 app.get('/api/health', (req, res) => {
